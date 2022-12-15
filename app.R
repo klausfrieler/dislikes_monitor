@@ -84,7 +84,7 @@ input_width <- 300
 ui_new <-
     shiny::shinyUI(
         navbarPage(
-            title = "Music (Dis)likes",
+            title = "Exploring (Dis)liked Music",
             theme = shinytheme("spacelab"),
             id = "tabs",
             tabPanel(
