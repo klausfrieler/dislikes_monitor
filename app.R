@@ -20,9 +20,11 @@ source("plot_util.R")
 on_server <- grepl("shiny-server", getwd())
 if(on_server){
     #result_dir <- "../earworms/output/results"
-    result_dir <- "data"
+  result_dir <- "data"
+  all_styles <<- readxl::read_xlsx("../MDS_demo/data_raw/SMP_AUS_styles.xlsx")
 } else{
-    result_dir <- "data/from_server"
+    result_dir <- "data/from_server/new"
+    all_styles <<- readxl::read_xlsx("SMP_AUS_styles.xlsx")
 
 }
 
@@ -235,7 +237,7 @@ server <- function(input, output, session) {
       check_data()
       data <- apply_filters(master, input)
       data %>%
-           select(-p_id, -DEG.age, -DEG.gender) %>%
+           select(-p_id, -DEG.age) %>%
            mutate_if(is.numeric, round, 2) %>%
            select(time_started, complete, age, gender, DEG.country_of_residence, everything())
    }, options = list(lengthMenu = list(c(25, 50,  -1), c("25", "50",  "All"))))
