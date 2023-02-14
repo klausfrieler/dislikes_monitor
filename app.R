@@ -20,8 +20,8 @@ source("plot_util.R")
 on_server <- grepl("shiny-server", getwd())
 if(on_server){
     #result_dir <- "../earworms/output/results"
-  result_dir <- "../MDS_demo/output/results/"
-  all_styles <<- readxl::read_xlsx("../MDS_demo/data_raw/SMP_AUS_styles.xlsx")
+  result_dir <- "../dislikes/output/results/"
+  all_styles <<- readxl::read_xlsx("../dislikes/data_raw/SMP_AUS_styles.xlsx")
 } else{
     result_dir <- "data/from_server/v2"
     all_styles <<- readxl::read_xlsx("SMP_AUS_styles.xlsx")
