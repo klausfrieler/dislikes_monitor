@@ -61,6 +61,11 @@ join_rows <- function(data){
   }
   ids <- data %>% count(p_id) %>% filter(n > 1) %>% pull(p_id)
   ret <- data %>% filter(!(p_id %in% ids))
+  mds_digest <- data %>%
+    filter(!is.na(MDS.rating)) %>%
+    group_by(p_id, style) %>%
+    summarise(MDS.mean_ratings = mean(MDS.rating, na.rm = T),
+              .groups = "drop")
   fixed_rows <-
     map_dfr(ids, function(i){
     tmp <- data %>% filter(p_id == i)
@@ -73,7 +78,12 @@ join_rows <- function(data){
     }
     tmp
   })
-  ret %>% bind_rows(fixed_rows)
+  # ret %>%
+  #   bind_rows(fixed_rows) %>%
+  data  %>%
+    left_join(mds_digest, by = c("p_id", "style")) %>%
+    select(-MDS.item, -MDS.rating) %>%
+    distinct()
 }
 
 parse_smp <- function(smp){
@@ -173,11 +183,15 @@ parse_mds_data <- function(results){
     person_data <- tibble(p_id = NA)
   }
   if(nrow(mds) > 0){
-    smp %>% left_join(mds, by = "style") %>% bind_cols(person_data)
+    ret <- smp %>% left_join(mds, by = "style") %>% bind_cols(person_data)
   }
   else{
-    smp %>%  bind_cols(person_data)
+    ret <- smp %>%  bind_cols(person_data)
   }
+  # if(length(mds_names) > 1){
+  #   browser()
+  # }
+  ret
 }
 
 read_data <- function(result_dir = "data/from_server"){
@@ -185,12 +199,14 @@ read_data <- function(result_dir = "data/from_server"){
 
   results <- purrr::map(list.files(result_dir, pattern = "*.rds", full.names = T), ~{readRDS(.x) %>% as.list()})
   #browser()
+  ret <-
   purrr::map_dfr(results, function(x){
     parse_mds_data(x)
 
-    }) %>%
-    join_rows() %>%
-    dplyr::arrange(time_started)
+  }) %>%
+  join_rows() %>%
+  dplyr::arrange(time_started)
+  ret
 }
 
 

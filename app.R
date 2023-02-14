@@ -20,10 +20,10 @@ source("plot_util.R")
 on_server <- grepl("shiny-server", getwd())
 if(on_server){
     #result_dir <- "../earworms/output/results"
-  result_dir <- "data"
+  result_dir <- "../MDS_demo/output/results/"
   all_styles <<- readxl::read_xlsx("../MDS_demo/data_raw/SMP_AUS_styles.xlsx")
 } else{
-    result_dir <- "data/from_server/new"
+    result_dir <- "data/from_server/v2"
     all_styles <<- readxl::read_xlsx("SMP_AUS_styles.xlsx")
 
 }
@@ -237,9 +237,10 @@ server <- function(input, output, session) {
       check_data()
       data <- apply_filters(master, input)
       data %>%
-           select(-p_id, -DEG.age) %>%
-           mutate_if(is.numeric, round, 2) %>%
-           select(time_started, complete, age, gender, DEG.country_of_residence, everything())
+        mutate(p_id = as.integer(factor(p_id) %>% fct_reorder(time_started))) %>%
+        select(-DEG.age) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(p_id, time_started, complete, age, gender, DEG.country_of_residence, everything())
    }, options = list(lengthMenu = list(c(25, 50,  -1), c("25", "50",  "All"))))
 
   output$univariate_plot <- renderPlot({
