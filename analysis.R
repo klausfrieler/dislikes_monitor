@@ -131,9 +131,9 @@ parse_crt <-function(crt_data){
     distinct()
   #browser()
   res <- res %>%
-    mutate(correct1 = as.numeric(bat_and_ball == "10"),
+    mutate(correct1 = as.numeric(bat_and_ball == "5"),
            correct2 = as.numeric(widgets == "5"),
-           correct3 = as.numeric(lily_pads == "24"),
+           correct3 = as.numeric(lily_pads == "47"),
            num_correct = correct1 + correct2 + correct3)
   res %>%
     select(-starts_with("correct")) %>%
@@ -209,11 +209,41 @@ read_data <- function(result_dir = "data/from_server"){
   ret
 }
 
+DEG.financial_labels <- c("Certainly not", "Probably not", "Probably yes", "Certainly yes")
+
+DEG.life_circumstances_labels <- c("Among the worst",
+                                   "Much worse than average",
+                                   "Worse than average",
+                                   "Average",
+                                   "Better than average",
+                                   "Much better than average",
+                                   "Among the best")
+dress_up_styles <- function(styles){
+  str_split(styles, "\\(") %>%
+    lapply(function(x) trimws(x[[1]])) %>%
+    str_replace_all("[/ -]+", "_")  %>%
+    tolower()
+}
 
 setup_workspace <- function(results = "data/from_server"){
   master <- read_data(results)
   master <- master %>% mutate(age = round(DEG.age/12),
-                              gender = factor(GIN.gender))
+                              gender = factor(GIN.gender),
+                              DEG.financial = factor(DEG.financial_labels[as.integer(DEG.financial)], levels = DEG.financial_labels),
+                              DEG.life_circumstances = factor(DEG.life_circumstances_labels[as.integer(DEG.life_circumstances)], levels = DEG.life_circumstances_labels)
+                              )
+  expanded_mds_ratings <- master %>%
+    select(p_id, MDS.mean_ratings, style) %>%
+    distinct() %>%
+    filter(!is.na(MDS.mean_ratings)) %>%
+    mutate(style = dress_up_styles(style)) %>%
+    pivot_wider(id_cols = p_id, names_from = style, values_from = MDS.mean_ratings, names_prefix = "MDS.")
+  master_metadata <- master %>%
+    filter(complete) %>%
+    select(-c(style, SMP.familiarity, SMP.liking, MDS.mean_ratings)) %>%
+    distinct() %>%
+    left_join(expanded_mds_ratings, by = "p_id")
+  assign("master_metadata", master_metadata, globalenv())
   assign("master", master, globalenv())
 }
 

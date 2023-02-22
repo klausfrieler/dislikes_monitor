@@ -30,7 +30,7 @@ if(on_server){
 
 setup_workspace(result_dir)
 
-var_choices <- setdiff(names(master), c("p_id",
+var_choices <- setdiff(names(master_metadata), c("p_id",
                                        "time_started",
                                        "time_ended",
                                        "pilot",
@@ -39,9 +39,9 @@ var_choices <- setdiff(names(master), c("p_id",
                                        "DEG.second_language",
                                        "DEG.first_language",
                                        "DEG.gender", "DEG.age"))
-var_types <- c("categorial", "numeric")[1 + map_lgl(var_choices, ~{(master[[.x]] %>% class())[1] == "numeric"})]
+var_types <- c("categorial", "numeric")[1 + map_lgl(var_choices, ~{(master_metadata[[.x]] %>% class())[1] == "numeric"})]
 var_data <- tibble(variable = var_choices, type = var_types)
-countries <- unique(master$DEG.country_of_residence)
+countries <- unique(master_metadata$DEG.country_of_residence)
 countries <- c("--", countries[!is.na(countries)])
 theme_set(get_default_theme())
 
@@ -245,7 +245,7 @@ server <- function(input, output, session) {
 
   output$univariate_plot <- renderPlot({
     check_data()
-    data <- apply_filters(master, input)
+    data <- apply_filters(master_metadata, input)
     #data <- master
     var_info <- var_data %>% filter(variable == input$uv_variable)
     if(var_info$type == "numeric"){
@@ -264,7 +264,7 @@ server <- function(input, output, session) {
 
   output$bivariate_plot <- renderPlot({
     check_data()
-    data <- apply_filters(master, input)
+    data <- apply_filters(master_metadata, input)
     #data <- master
 
     #browser()
@@ -281,7 +281,7 @@ server <- function(input, output, session) {
 
     output$corr_tab <- renderTable({
       check_data()
-      data <- apply_filters(master, input)
+      data <- apply_filters(master_metadata, input)
       vars <- get_parameters(data, input, var_data = var_data)
       if(vars$sub_type == "num-num" && input$bv_variable1 != input$bv_variable2) {
         get_correlations(data, input$bv_variable1, input$bv_variable2)
