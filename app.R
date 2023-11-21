@@ -62,6 +62,23 @@ get_reflection_p_ids <- function(data = metadata){
 
 }
 
+get_age_groups <- function(data){
+  if(!is.null(data) || is.na(data) || nrow(data) == 0){
+    return(c())
+  }
+  age <- unique(data$age)
+  ret <- c()
+  if(any(age <=34)){
+    ret <- c("17-34")
+  }
+  if(any(age > 34 & age <= 53)){
+    ret <- c(ret, "35-53")
+  }
+  if(any(age >= 54)){
+    ret <- c(ret, "54+")
+  }
+  ret
+}
 p_ids <- get_reflection_p_ids(metadata)
 
 theme_set(get_default_theme())
@@ -187,13 +204,13 @@ ui_new <-
               "Reflections",
               sidebarLayout(
                 sidebarPanel(
-                  selectizeInput("ref_age_groups", "Age groups:", age_groups, selected = age_groups, multiple = T),
-                  selectizeInput("ref_gender", "Gender:", gender, selected = gender, multiple = T),
-                  selectizeInput("ref_p_id", "ID:", p_ids, selected = p_ids[1], multiple = F),
-                  selectizeInput("ref_most_liked", "Most liked:", most_liked, selected = most_disliked, multiple = T),
-                  selectizeInput("ref_most_disliked", "Most disliked:", most_disliked, selected = most_disliked, multiple = T),
+                  selectizeInput("ref_age_groups", "Age groups", age_groups, selected = age_groups, multiple = T),
+                  selectizeInput("ref_gender", "Gender", gender, selected = gender, multiple = T),
+                  selectizeInput("ref_p_id", sprintf("ID (%d)", length(p_ids)), p_ids, selected = p_ids[1], multiple = F),
+                  selectizeInput("ref_most_liked", "Most liked", most_liked, selected = most_disliked, multiple = T),
+                  selectizeInput("ref_most_disliked", "Most disliked", most_disliked, selected = most_disliked, multiple = T),
                   selectizeInput("ref_country",
-                                 "Countries:",
+                                 "Countries",
                                  countries,
                                  selected = countries,
                                  multiple = T),
@@ -271,9 +288,6 @@ apply_filters <- function(data, input, no_id = F){
   #print(nrow(data))
   data <- data %>% filter(as.character(gender) %in% gender_filter)
   if(filter_styles){
-    if(p_id_filter == "0092"){
-      browser()
-    }
     data <- data %>%
       filter(REF.most_liked %in% most_liked_filter) %>%
       filter(REF.most_disliked %in% most_disliked_filter) %>%
@@ -301,43 +315,99 @@ server <- function(input, output, session) {
    })
    shiny::observeEvent(input$ref_age_groups, {
      data <- apply_filters(metadata, input, no_id = T)
+     #messagef("input$ref_age_groups %d", nrow(data))
+     if(nrow(data) == 0){
+       return()
+     }
+
      updateSelectizeInput(session, inputId = "ref_most_liked",
-                          choices = unique(data$REF.most_liked),
                           selected = unique(data$REF.most_liked)
      )
      updateSelectizeInput(session, inputId = "ref_most_disliked",
-                          choices = unique(data$REF.most_disliked),
                           selected = unique(data$REF.most_disliked))
 
      updateSelectizeInput(session, inputId = "ref_p_id",
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
                           choices = get_reflection_p_ids(data),
                           selected = get_reflection_p_ids(data)[1])
    })
    shiny::observeEvent(input$ref_gender, {
      data <- apply_filters(metadata, input, no_id = T)
+     #messagef("input$ref_gender %d", nrow(data))
+
+     if(nrow(data) == 0){
+       return()
+     }
+
      updateSelectizeInput(session, inputId = "ref_most_liked",
-                          choices = unique(data$REF.most_liked),
                           selected = unique(data$REF.most_liked)
      )
      updateSelectizeInput(session, inputId = "ref_most_disliked",
-                          choices = unique(data$REF.most_disliked),
                           selected = unique(data$REF.most_disliked))
 
      updateSelectizeInput(session, inputId = "ref_p_id",
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
                           choices = get_reflection_p_ids(data),
                           selected = get_reflection_p_ids(data)[1])
    })
+
    shiny::observeEvent(input$ref_country, {
      data <- apply_filters(metadata, input, no_id = T)
+     #messagef("input$ref_country %d", nrow(data))
+     if(nrow(data) == 0){
+       return()
+     }
      updateSelectizeInput(session, inputId = "ref_most_liked",
-                          choices = unique(data$REF.most_liked),
                           selected = unique(data$REF.most_liked)
                           )
      updateSelectizeInput(session, inputId = "ref_most_disliked",
-                          choices = unique(data$REF.most_disliked),
                           selected = unique(data$REF.most_disliked))
      updateSelectizeInput(session, inputId = "ref_p_id",
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
                           choices = get_reflection_p_ids(data),
+                          selected = get_reflection_p_ids(data)[1])
+
+   })
+
+   shiny::observeEvent(input$ref_most_liked, {
+     data <- apply_filters(metadata, input, no_id = T)
+
+     #messagef("input$ref_most_liked %d", nrow(data))
+    #browser()
+     if(nrow(data) == 0){
+       return()
+     }
+
+     updateSelectizeInput(session, inputId = "ref_most_disliked",
+                          selected = unique(data$REF.most_disliked))
+     updateSelectizeInput(session, inputId = "ref_gender",
+                          selected = unique(data$gender))
+     updateSelectizeInput(session, inputId = "ref_age_group",
+                          selected = get_age_groups(data))
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = get_reflection_p_ids(data),
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
+                          selected = get_reflection_p_ids(data)[1])
+
+   })
+
+   shiny::observeEvent(input$ref_most_disliked, {
+     data <- apply_filters(metadata, input, no_id = T)
+     #messagef("input$ref_most_disliked %d", nrow(data))
+
+     if(nrow(data) == 0){
+       return()
+     }
+
+     updateSelectizeInput(session, inputId = "ref_most_liked",
+                          selected = unique(data$REF.most_liked))
+     updateSelectizeInput(session, inputId = "ref_gender",
+                          selected = unique(data$gender))
+     updateSelectizeInput(session, inputId = "ref_age_group",
+                          selected = get_age_groups(data))
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = get_reflection_p_ids(data),
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
                           selected = get_reflection_p_ids(data)[1])
 
    })
@@ -345,6 +415,12 @@ server <- function(input, output, session) {
    shiny::observeEvent(input$next_id, {
      data <- apply_filters(metadata, input, no_id = T)
      #browser()
+     #messagef("input$next_id %d", nrow(data))
+
+     if(nrow(data) == 0){
+       return()
+
+     }
      selected <- input$ref_p_id
      choices <- get_reflection_p_ids(data)
      idx <- which(selected == choices) + 1
@@ -360,6 +436,13 @@ server <- function(input, output, session) {
    shiny::observeEvent(input$previous_id, {
      data <- apply_filters(metadata, input, no_id = T)
      #browser()
+
+     #messagef("input$previous_id %d", nrow(data))
+
+     if(nrow(data) == 0){
+       return()
+
+     }
      selected <- input$ref_p_id
      choices <- get_reflection_p_ids(data)
      idx <- which(selected == choices) - 1
@@ -475,7 +558,6 @@ server <- function(input, output, session) {
     check_data()
     data <- apply_filters(metadata, input) %>%
       filter(!is.na(REF.reflection), nzchar(REF.reflection))
-    print(nrow(data))
     # if(nrow(data) = 0){
     #    return(shiny::p("Empty data...",
     #           style = "text-color:red"))
