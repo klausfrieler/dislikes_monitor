@@ -1,9 +1,10 @@
 def_colour1 <- "#1f77b4"
 def_colour2 <- "#ff7f0e"
-def_colour3 <- "green"
-uv_alpha <- .7
-bv_alpha <- .7
-long_alpha <- .7
+def_colour3 <- "goldenrod"
+def_colour4 <- "darkolivegreen"
+uv_alpha <- .2
+bv_alpha <- .2
+long_alpha <- .2
 default_text_size <- 16
 
 library(corrr)
@@ -158,10 +159,10 @@ add_facet <-function(plot_obj, data, group_var, group_var2 = NULL, scale = "free
 univariate_plot_categorial <- function(data, var, group_var = NULL,
                                        group_var2 = NULL, scale = "fixed", remove_na = F, remove_na2 = F,
                                        coord_flip = FALSE){
-  data <- data %>% mutate_at(vars(var), funs(factor))
+  data <- data %>% mutate(across(all_of(var), factor))
   data <- add_group_vars(data, group_var, group_var2, remove_na = remove_na, remove_na2 = remove_na2)
 
-  q <- ggplot(data, aes_string(x = var, y = "..count.."))
+  q <- ggplot(data, aes(x = !!sym(var), y = after_stat(count)))
   q <- q + geom_bar(fill = def_colour1, alpha = uv_alpha, colour = "black")
   q <- add_facet(q, data, group_var, group_var2, scale = scale)
   q <- q + labs(x = get_display_name(var))
@@ -186,7 +187,7 @@ univariate_plot_numeric <- function(data, var,
   }
   data <- add_group_vars(data, group_var, group_var2, remove_na = remove_na, remove_na2 = remove_na2)
 
-  q <- ggplot(data, aes_string(x = var, y = "..count.."))
+  q <- data %>% ggplot(aes(x = !!sym(var), y = after_stat(count)))
   q <- q + geom_histogram(fill = def_colour1 , alpha = uv_alpha, colour = "black")
   q <- add_facet(q, data, group_var, group_var2, scale)
   q <- q + labs(x = get_display_name(var))
@@ -211,12 +212,12 @@ bivariate_plot_categorial_numeric <- function(data, var_x, var_y,
                                               remove_na = F, remove_na2 = F){
   #browser()
   data <- data[!is.na(data[, var_x]),]
-  data <- data %>% mutate_at(vars(var_x), funs(factor))
+  data <- data %>% mutate(across(all_of(var_x), factor))
   data <- add_group_vars(data, group_var, group_var2, remove_na = remove_na, remove_na2 = remove_na2)
 
-  q <- ggplot(data, aes_string(x = var_x, y = var_y))
+  q <- ggplot(data, aes(x = !!sym(var_x), y = !!sym(var_y)))
   q <- q + geom_boxplot(fill = def_colour1)
-  q <- q + geom_point(alpha = bv_alpha)
+  q <- q + geom_jitter(alpha = bv_alpha, width = .2)
   q <- add_facet(q, data, group_var, group_var2, scale)
   q <- q + labs(x = get_display_name(var_x), y = get_display_name(var_y))
 
@@ -231,7 +232,7 @@ bivariate_plot_numeric_numeric <- function(data, var_x, var_y, add_regression = 
   #}
   #browser()
   data <- add_group_vars(data, group_var, group_var2, remove_na = remove_na, remove_na2 = remove_na2)
-  q <- ggplot(data, aes_string(x = var_x, y = var_y))
+  q <- ggplot(data, aes(x = !!sym(var_x), y = !!sym(var_y)))
   q <- q + geom_point(alpha = bv_alpha, colour = def_colour1)
   if(add_regression){
     q <- q + geom_smooth(method = "lm", colour = def_colour2)
@@ -1011,4 +1012,84 @@ all_rainclouds <- function(data = selina_data){
   ggsave("IMI_rainclouds.png", dpi = 600)
   double_profile_rainclouds(data, "long")
   ggsave("IMI_rainclouds_long.png", dpi = 600)
+}
+
+
+dislikes_profile_plot <- function(meta, countries = NULL, least_mentions = .0){
+  tmp <- meta %>%
+    distinct(p_id, DEG.country_of_residence, REF.most_liked, REF.most_disliked)
+
+  most_dis <- tmp %>%
+    parkR::freq_table(REF.most_disliked) %>%
+    mutate(DEG.country_of_residence = "ALL")
+  most_lik <- tmp %>%
+    parkR::freq_table(REF.most_liked) %>%
+    mutate(DEG.country_of_residence = "ALL")
+
+  if(!is.null(countries)){
+    tmp <- tmp %>% filter(DEG.country_of_residence %in% countries)
+    most_dis <- tmp %>% freq2_table(DEG.country_of_residence, REF.most_disliked)
+    most_lik <- tmp %>% freq2_table(DEG.country_of_residence, REF.most_liked)
+  }
+  tmp <- most_dis %>%
+    select(prop_disliked = freq,
+           style = REF.most_disliked,
+           country = DEG.country_of_residence) %>%
+    full_join(most_lik %>%
+                select(style = REF.most_liked,
+                       prop_liked = freq,
+                       country = DEG.country_of_residence)) %>%
+    mutate(prop_liked = replace_na(prop_liked, 0),
+           prop_disliked = replace_na(prop_disliked, 0)) %>%
+    mutate(d = prop_liked -prop_disliked,
+           s = prop_liked + prop_disliked)
+  #browser()
+  q <- tmp %>% filter(!is.na(style)) %>%
+    filter(s >= least_mentions, abs(d) > .0001) %>%
+    mutate(is_positive = d > .0001) %>%
+    ggplot(aes(x = fct_reorder(dress_up_styles(style), d), y = d))
+  q <- q + geom_col(aes(alpha = s, fill = country), color = "black", position = position_dodge())
+  q <- q + scale_fill_manual(values = c(def_colour1, def_colour2, def_colour3, def_colour4 ), guide = "none")
+  q <- q + coord_flip()
+  q <- q + theme_bw()
+  #q <- q + theme(axis.text.x = element_text(angle = 0, hjust = 1, color = "red"))
+  q <- q + labs(y = "Difference rel. freq. of Liked - Disliked", x = "Style", alpha = "Total mentions")
+  if(!is.null(countries)){
+    q <- q + facet_wrap(~country)
+  }
+  q
+}
+
+heatmap_dislikes <- function(data = mds_wide, country_filter = NULL, dislike_scale = T){
+  tmp <- data %>%
+    mutate(country = lump_countries(country),
+           style = dress_up_styles((style)))
+  if(!is.null(country_filter)){
+    tmp <- tmp %>% filter(country %in% country_filter)
+  }
+
+  if(dislike_scale){
+    tmp <-  tmp %>% select(starts_with("DS"), style)
+  }
+  else{
+    tmp <-  tmp %>% select(starts_with(c("emo", "music", "lyrics", "social", "body")), style)
+  }
+  tmp <- tmp  %>%
+    group_by(style) %>%
+    summarise(across(where(is.numeric), mean))  %>%
+    pivot_longer(-style) %>%
+    group_by(name) %>%
+    mutate(value_z = scale(value) %>% as.numeric())%>%
+    ungroup() %>%
+    mutate(label_color = value_z < 0)
+  q <- tmp %>% ggplot(aes(y  = fct_reorder(style, value, sum),
+                          x = fct_reorder(name, value),
+                          fill = value_z))
+  q <- q + geom_tile()
+  q <- q + geom_text(aes(label = sprintf("%0.1f", value_z), color = label_color), size = 3)
+  q <- q + scale_fill_viridis_c(option = "inferno")
+  q <- q + scale_color_manual(values = c("black", "white"), guide = "none")
+  q <- q + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  q <- q + labs(x = "", y = "")
+  q
 }

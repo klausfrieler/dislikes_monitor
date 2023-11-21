@@ -14,6 +14,7 @@ library(sjPlot)
 # library(networkD3)
 # library(igraph)
 
+source("utils.R")
 source("analysis.R")
 source("plot_util.R")
 
@@ -21,16 +22,18 @@ on_server <- grepl("shiny-server", getwd())
 if(on_server){
     #result_dir <- "../earworms/output/results"
   result_dir <- "../dislikes/output/results/"
-  all_styles <<- readxl::read_xlsx("../dislikes/data_raw/SMP_AUS_styles.xlsx")
+  #all_styles <<- readxl::read_xlsx("../dislikes/data_raw/SMP_AUS_styles.xlsx")
+  all_styles_path <- "../dislikes/data_raw/SMP_AUS_styles.xlsx"
 } else{
-    result_dir <- "data/from_server/v2"
-    all_styles <<- readxl::read_xlsx("SMP_AUS_styles.xlsx")
+    result_dir <- "data/from_server/"
+    #all_styles <<- readxl::read_xlsx("data/SMP_AUS_styles.xlsx")
+    all_styles_path <- "data/SMP_AUS_styles.xlsx"
 
 }
 
-setup_workspace(result_dir)
+setup_workspace(result_dir, all_styles_path = all_styles_path, reload = F)
 
-var_choices <- setdiff(names(master_metadata), c("p_id",
+var_choices <- setdiff(names(metadata), c("p_id",
                                        "time_started",
                                        "time_ended",
                                        "pilot",
@@ -39,10 +42,18 @@ var_choices <- setdiff(names(master_metadata), c("p_id",
                                        "DEG.second_language",
                                        "DEG.first_language",
                                        "DEG.gender", "DEG.age"))
-var_types <- c("categorial", "numeric")[1 + map_lgl(var_choices, ~{(master_metadata[[.x]] %>% class())[1] == "numeric"})]
+var_types <- c("categorial", "numeric")[1 + map_lgl(var_choices, ~{(metadata[[.x]] %>% class())[1] == "numeric"})]
 var_data <- tibble(variable = var_choices, type = var_types)
-countries <- unique(master_metadata$DEG.country_of_residence)
-countries <- c("--", countries[!is.na(countries)])
+countries <- unique(metadata$DEG.country_of_residence)
+countries <- c(countries[!is.na(countries)])
+age_groups <-  c( "17-34", "35-53", "54+")
+gender <- levels(metadata$gender)
+most_liked <- unique(master$REF.most_disliked) %>% sort()
+most_disliked <- unique(master$REF.most_liked) %>% sort()
+styles <- union(most_liked, most_disliked) %>% sort()
+metadata <- metadata %>% mutate(p_id = sprintf("%04d", p_id %>% as.factor() %>% as.integer()))
+p_ids <- unique(metadata$p_id) %>% sort()
+
 theme_set(get_default_theme())
 
 get_intro_text <- function(){
@@ -94,9 +105,10 @@ ui_new <-
                 sidebarLayout(
                     sidebarPanel(
                       selectizeInput("country_filter",
-                                     "Filter:",
+                                     "Countries:",
                                      countries,
-                                     multiple = F),
+                                     selected = countries,
+                                     multiple = T),
                       impressum(),
                       #downloadButton("download_all_data_csv", "Download data"),
                       #checkboxInput("dec", label = "Use German Format", value = 0),
@@ -119,8 +131,10 @@ ui_new <-
                     sidebarPanel(
                         selectizeInput("uv_variable", "Variable:", var_choices, multiple = F),
                         selectizeInput("uv_country_filter",
-                                       "Filter:",
-                                       choices = countries, multiple = F),
+                                       "Countries:",
+                                       selected = countries,
+                                       choices = countries,
+                                       multiple = T),
 
                         impressum(),
                         width = 2
@@ -142,9 +156,10 @@ ui_new <-
                         actionButton("switch_axes",
                                      label = "Switch axes", style = "margin-bottom: 10px"),
                         selectizeInput("bv_country_filter",
-                                       "Filter:",
+                                       "Countries:",
                                        countries,
-                                       multiple = F),
+                                       selected = countries,
+                                       multiple = T),
 
                         impressum(),
                         width = 2
@@ -158,7 +173,36 @@ ui_new <-
 
                 )
             ),
+            tabPanel(
+              "Reflections",
+              sidebarLayout(
+                sidebarPanel(
+                  selectizeInput("ref_age_groups", "Age groups:", age_groups, selected = age_groups, multiple = T),
+                  selectizeInput("ref_gender", "Gender:", gender, selected = gender, multiple = T),
+                  selectizeInput("ref_p_id", "ID:", p_ids, selected = p_ids[1], multiple = F),
+                  selectizeInput("ref_most_liked", "Most liked:", most_liked, selected = most_disliked, multiple = T),
+                  selectizeInput("ref_most_disliked", "Most disliked:", most_disliked, selected = most_disliked, multiple = T),
+                  selectizeInput("ref_country",
+                                 "Countries:",
+                                 countries,
+                                 selected = countries,
+                                 multiple = T),
+                  impressum(),
+                  width = 2
+                ),
 
+                # Main panel for displaying outputs ----
+                mainPanel(
+                  actionButton("previous_id", "Previous"),
+                  actionButton("next_id", "Next"),
+                  uiOutput("ref_reader_demographics"),
+                  uiOutput("ref_reader_reflections"),
+                  uiOutput("ref_reader_personality_headline"),
+                  plotOutput("ref_reader_personality_plot", width = 600)
+                )
+
+              )
+            ),
             tabPanel(
                 "Data",
                 sidebarLayout(
@@ -175,25 +219,56 @@ ui_new <-
                 )
             )))
 
-apply_filters <- function(data, input){
+apply_filters <- function(data, input, no_id = F){
   tabs <- input$tabs
   #browser()
+  country_filter <- countries
+  age_filter <- make_age_range(age_groups)
+  gender_filter <- gender
+  most_liked_filter <- most_liked
+  most_disliked_filter <- most_disliked
+  filter_styles <- F
   if(tabs == "Home"){
-    filter_val <- input$country_filter
+    country_filter <- input$country_filter
   }
   else if(tabs == "Univariate"){
-    filter_val <- input$uv_country_filter
+    country_filter <- input$uv_country_filter
   }
   else if(tabs == "Bivariate"){
-    filter_val <- input$bv_country_filter
+    country_filter <- input$bv_country_filter
+  }
+  else if(tabs == "Reflections"){
+    country_filter <- input$ref_country
+    age_filter <- make_age_range(input$ref_age_groups)
+    gender_filter <- input$ref_gender
+    most_liked_filter <- input$ref_most_liked
+    most_disliked_filter <- input$ref_most_disliked
+    p_id_filter <- input$ref_p_id
+    filter_styles <- T
   }
   else{
     return(data)
   }
-  if(filter_val == "--") return(data)
+  # print(country_filter)
+  # print(age_filter)
+  # print(gender_filter)
   #print(input$pc_study_filter)
-  data <- data %>% filter(DEG.country_of_residence == filter_val)
-
+  #print(nrow(data))
+  data <- data %>% filter(DEG.country_of_residence %in% country_filter)
+  #print(nrow(data))
+  data <- data %>% filter(is.na(age) | age %in% age_filter)
+  #print(nrow(data))
+  data <- data %>% filter(as.character(gender) %in% gender_filter)
+  if(filter_styles){
+    data <- data %>%
+      filter(REF.most_liked %in% most_liked_filter) %>%
+      filter(REF.most_disliked %in% most_disliked_filter) %>%
+      filter(!is.na(REF.reflection), nzchar(REF.reflection))
+    if(!no_id){
+      data <- data %>%
+      filter(p_id == p_id_filter)
+    }
+  }
   data
 }
 # Define server logic required to draw a plot
@@ -210,7 +285,82 @@ server <- function(input, output, session) {
                             selected = x)
 
    })
-   output$introduction <- renderUI({
+   shiny::observeEvent(input$ref_age_groups, {
+     data <- apply_filters(metadata, input, no_id = T)
+     updateSelectizeInput(session, inputId = "ref_most_liked",
+                          choices = unique(data$REF.most_liked),
+                          selected = unique(data$REF.most_liked)
+     )
+     updateSelectizeInput(session, inputId = "ref_most_disliked",
+                          choices = unique(data$REF.most_disliked),
+                          selected = unique(data$REF.most_disliked))
+
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = sort(unique(data$p_id)),
+                          selected = sort(unique(data$p_id))[1])
+   })
+   shiny::observeEvent(input$ref_gender, {
+     data <- apply_filters(metadata, input, no_id = T)
+     updateSelectizeInput(session, inputId = "ref_most_liked",
+                          choices = unique(data$REF.most_liked),
+                          selected = unique(data$REF.most_liked)
+     )
+     updateSelectizeInput(session, inputId = "ref_most_disliked",
+                          choices = unique(data$REF.most_disliked),
+                          selected = unique(data$REF.most_disliked))
+
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = unique(data$p_id)  %>% sort(),
+                          selected = sort(unique(data$p_id))[1])
+   })
+   shiny::observeEvent(input$ref_country, {
+     data <- apply_filters(metadata, input, no_id = T)
+     updateSelectizeInput(session, inputId = "ref_most_liked",
+                          choices = unique(data$REF.most_liked),
+                          selected = unique(data$REF.most_liked)
+                          )
+     updateSelectizeInput(session, inputId = "ref_most_disliked",
+                          choices = unique(data$REF.most_disliked),
+                          selected = unique(data$REF.most_disliked))
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = unique(data$p_id) %>% sort(),
+                          selected = sort(unique(data$p_id))[1])
+
+   })
+
+   shiny::observeEvent(input$next_id, {
+     data <- apply_filters(metadata, input, no_id = T)
+     #browser()
+     selected <- input$ref_p_id
+     choices <- unique(data$p_id) %>% sort()
+     idx <- which(selected == choices) + 1
+     if(idx > length(choices)){
+       idx <- 1
+     }
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = choices,
+                          selected = choices[idx])
+
+   })
+
+   shiny::observeEvent(input$previous_id, {
+     data <- apply_filters(metadata, input, no_id = T)
+     #browser()
+     selected <- input$ref_p_id
+     choices <- unique(data$p_id) %>% sort()
+     idx <- which(selected == choices) - 1
+     if(idx < 1){
+       idx <- length(choices)
+     }
+
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = choices,
+                          selected = choices[idx])
+
+   })
+
+
+    output$introduction <- renderUI({
      get_intro_text()
    })
    output$overall_stats <- renderTable({
@@ -245,7 +395,7 @@ server <- function(input, output, session) {
 
   output$univariate_plot <- renderPlot({
     check_data()
-    data <- apply_filters(master_metadata, input)
+    data <- apply_filters(metadata, input)
     #data <- master
     var_info <- var_data %>% filter(variable == input$uv_variable)
     if(var_info$type == "numeric"){
@@ -264,7 +414,7 @@ server <- function(input, output, session) {
 
   output$bivariate_plot <- renderPlot({
     check_data()
-    data <- apply_filters(master_metadata, input)
+    data <- apply_filters(metadata, input)
     #data <- master
 
     #browser()
@@ -277,19 +427,121 @@ server <- function(input, output, session) {
     bivariate_plot_auto(data, input, var_data, remove_na = T)
   })
 
+  output$corr_tab <- renderTable({
+    check_data()
+    data <- apply_filters(metadata, input)
+    vars <- get_parameters(data, input, var_data = var_data)
+    if(vars$sub_type == "num-num" && input$bv_variable1 != input$bv_variable2) {
+      get_correlations(data, input$bv_variable1, input$bv_variable2)
+    }
+  },  caption = "Correlations", caption.placement = getOption("xtable.caption.placement", "top"))
+
+  output$ref_reader_demographics <- renderUI({
+    check_data()
+    data <- metadata %>% mutate(
+                                SES = scale(scale(as.integer(factor(DEG.financial))) +
+                                                    scale(as.integer(as.factor(DEG.life_circumstances)))) %>%
+                                  as.numeric())
+    data <- apply_filters(data, input) %>%
+      filter(!is.na(REF.reflection), nzchar(REF.reflection))
+    if(nrow(data) == 0){
+      return(shiny::p("Empty data..."))
+    }
+    shiny::h3(sprintf("Participant %s: %s (%s),  %s",
+                               data$p_id[1],
+                               str_to_title(data$gender[1]),
+                               data$age[1],
+                               data$DEG.country_of_residence[1]))
 
 
-    output$corr_tab <- renderTable({
-      check_data()
-      data <- apply_filters(master_metadata, input)
-      vars <- get_parameters(data, input, var_data = var_data)
-      if(vars$sub_type == "num-num" && input$bv_variable1 != input$bv_variable2) {
-        get_correlations(data, input$bv_variable1, input$bv_variable2)
-      }
-    },  caption = "Correlations", caption.placement = getOption("xtable.caption.placement", "top"))
+  })
 
+  output$ref_reader_personality_headline <- renderUI({
+    shiny::h4("Personality Profile", style = "margin-top:50px;margin-left:40px")
 
-    output$download_all_data_csv <- downloadHandler(
+  })
+  output$ref_reader_personality <- renderUI({
+    check_data()
+    data <- apply_filters(metadata, input) %>%
+      filter(!is.na(REF.reflection), nzchar(REF.reflection))
+
+    # if(nrow(data) = 0){
+    #   return(shiny::p("Empty data...",
+    #          style = "text-color:red"))
+    # }
+    data %>% mutate(MET.music_engagement = .2*(MET.physical +
+                                           MET.affective +
+                                           MET.social +
+                                           MET.cognitive +
+                                           MET.narrative)) %>%
+      mutate(GMS.active_engagement_with_music = round(GMS.active_engagement/7, 2)) %>%
+      mutate(across(starts_with("TPI"), function(x) round(x/7,2)),
+             MET.music_enjoyment = round(MET.music_engagement/7,2)) %>%
+      select(p_id,
+             GMS.active_engagement_with_music,
+             MET.music_enjoment,
+             starts_with("TPI")) %>%
+      distinct() %>%
+      make_shiny_table() %>%
+    shiny::div(shiny::h4("Personality Profile"), ., style = "margin-top:20px")
+
+  })
+
+  output$ref_reader_personality_plot <- renderPlot({
+    check_data()
+    md <- metadata %>%
+      mutate(SES.economic_status_norm = (SES.economic_status - min(SES.economic_status))/diff(range(SES.economic_status)))
+    data <- apply_filters(md, input) %>%
+      filter(!is.na(REF.reflection), nzchar(REF.reflection))
+
+    # if(nrow(data) = 0){
+    #   return(shiny::p("Empty data...",
+    #          style = "text-color:red"))
+    # }
+    data %>% mutate(MET.music_enjoyment = .2*(  MET.physical +
+                                                 MET.affective +
+                                                 MET.social +
+                                                 MET.cognitive +
+                                                 MET.narrative)
+                    ) %>%
+      mutate(GMS.active_engagement_with_music = round(GMS.active_engagement/7, 2),
+             MET.music_enjoyment = round(MET.music_enjoyment/7,2)) %>%
+      mutate(across(starts_with("TPI"), function(x) round(x/7,2))) %>%
+      select(p_id,
+             GMS.active_engagement_with_music,
+             MET.music_enjoyment,
+             SES.economic_status_norm,
+             starts_with("TPI")) %>%
+      distinct() %>%
+      pivot_longer(-p_id)  %>%
+      mutate(type = get_var_group(name)) %>%
+      mutate(name = sprintf("%s:",(name %>%
+                                     str_split_fixed("[.]", 2))[,2] %>%
+                              str_replace_all("_", " ") %>%
+                              str_to_title())) %>%
+    ggplot(aes(x = fct_reorder(name, type), y = value, colour = type)) +
+      geom_linerange(aes(ymax = value, ymin = 0), linewidth = 1) +
+      geom_point(size = 4) +
+      #geom_col(color = "black") +
+      scale_colour_brewer(palette = "Set1", guide = "none") +
+      coord_flip() + labs(x = "", y = "Normalized value (0-1)")
+
+  })
+
+  output$ref_reader_reflections <- renderUI({
+    check_data()
+    data <- metadata %>%
+      filter(!is.na(REF.reflection), nzchar(REF.reflection))
+    data <- apply_filters(data, input) %>% slice(1)
+    shiny::div(
+               shiny::h4(shiny::tags$b("Most liked:"),  data$REF.most_liked[1], style = "color:#4DAF4A"),
+               shiny::h4(shiny::tags$b("Most disliked:"), data$REF.most_disliked[1], style = "color:#E41A1C"),
+               #shiny::h4("Reflection", style = "margin-top:20px"),
+               shiny::p(data$REF.reflection[1], style = "width:600px;display:block;font-size:14pt;border:1px black dotted;padding:10px;background:#eeeeee"), style = "margin:40px")
+
+  })
+
+  output$download_all_data_csv <- downloadHandler(
       filename = "dislikes_data.csv",
       content = function(file) {
         dec <- ifelse(input$dec, ",", ".")
