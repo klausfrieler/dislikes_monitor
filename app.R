@@ -53,7 +53,16 @@ most_liked <- unique(master$REF.most_disliked) %>% sort()
 most_disliked <- unique(master$REF.most_liked) %>% sort()
 styles <- union(most_liked, most_disliked) %>% sort()
 metadata <- metadata %>% mutate(p_id = sprintf("%04d", p_id %>% as.factor() %>% as.integer()))
-p_ids <- unique(metadata$p_id) %>% sort()
+get_reflection_p_ids <- function(data = metadata){
+  data %>%
+    filter(!is.na(REF.reflection), nzchar(REF.reflection)) %>%
+    pull(p_id) %>%
+    unique() %>%
+    sort()
+
+}
+
+p_ids <- get_reflection_p_ids(metadata)
 
 theme_set(get_default_theme())
 
@@ -228,6 +237,7 @@ apply_filters <- function(data, input, no_id = F){
   gender_filter <- gender
   most_liked_filter <- most_liked
   most_disliked_filter <- most_disliked
+  p_id_filter <- NA
   filter_styles <- F
   if(tabs == "Home"){
     country_filter <- input$country_filter
@@ -261,6 +271,9 @@ apply_filters <- function(data, input, no_id = F){
   #print(nrow(data))
   data <- data %>% filter(as.character(gender) %in% gender_filter)
   if(filter_styles){
+    if(p_id_filter == "0092"){
+      browser()
+    }
     data <- data %>%
       filter(REF.most_liked %in% most_liked_filter) %>%
       filter(REF.most_disliked %in% most_disliked_filter) %>%
@@ -297,8 +310,8 @@ server <- function(input, output, session) {
                           selected = unique(data$REF.most_disliked))
 
      updateSelectizeInput(session, inputId = "ref_p_id",
-                          choices = sort(unique(data$p_id)),
-                          selected = sort(unique(data$p_id))[1])
+                          choices = get_reflection_p_ids(data),
+                          selected = get_reflection_p_ids(data)[1])
    })
    shiny::observeEvent(input$ref_gender, {
      data <- apply_filters(metadata, input, no_id = T)
@@ -311,8 +324,8 @@ server <- function(input, output, session) {
                           selected = unique(data$REF.most_disliked))
 
      updateSelectizeInput(session, inputId = "ref_p_id",
-                          choices = unique(data$p_id)  %>% sort(),
-                          selected = sort(unique(data$p_id))[1])
+                          choices = get_reflection_p_ids(data),
+                          selected = get_reflection_p_ids(data)[1])
    })
    shiny::observeEvent(input$ref_country, {
      data <- apply_filters(metadata, input, no_id = T)
@@ -324,8 +337,8 @@ server <- function(input, output, session) {
                           choices = unique(data$REF.most_disliked),
                           selected = unique(data$REF.most_disliked))
      updateSelectizeInput(session, inputId = "ref_p_id",
-                          choices = unique(data$p_id) %>% sort(),
-                          selected = sort(unique(data$p_id))[1])
+                          choices = get_reflection_p_ids(data),
+                          selected = get_reflection_p_ids(data)[1])
 
    })
 
@@ -333,7 +346,7 @@ server <- function(input, output, session) {
      data <- apply_filters(metadata, input, no_id = T)
      #browser()
      selected <- input$ref_p_id
-     choices <- unique(data$p_id) %>% sort()
+     choices <- get_reflection_p_ids(data)
      idx <- which(selected == choices) + 1
      if(idx > length(choices)){
        idx <- 1
@@ -348,7 +361,7 @@ server <- function(input, output, session) {
      data <- apply_filters(metadata, input, no_id = T)
      #browser()
      selected <- input$ref_p_id
-     choices <- unique(data$p_id) %>% sort()
+     choices <- get_reflection_p_ids(data)
      idx <- which(selected == choices) - 1
      if(idx < 1){
        idx <- length(choices)
@@ -439,11 +452,8 @@ server <- function(input, output, session) {
 
   output$ref_reader_demographics <- renderUI({
     check_data()
-    data <- metadata %>% mutate(
-                                SES = scale(scale(as.integer(factor(DEG.financial))) +
-                                                    scale(as.integer(as.factor(DEG.life_circumstances)))) %>%
-                                  as.numeric())
-    data <- apply_filters(data, input) %>%
+
+    data <- apply_filters(metadata, input) %>%
       filter(!is.na(REF.reflection), nzchar(REF.reflection))
     if(nrow(data) == 0){
       return(shiny::p("Empty data..."))
@@ -465,10 +475,10 @@ server <- function(input, output, session) {
     check_data()
     data <- apply_filters(metadata, input) %>%
       filter(!is.na(REF.reflection), nzchar(REF.reflection))
-
+    print(nrow(data))
     # if(nrow(data) = 0){
-    #   return(shiny::p("Empty data...",
-    #          style = "text-color:red"))
+    #    return(shiny::p("Empty data...",
+    #           style = "text-color:red"))
     # }
     data %>% mutate(MET.music_engagement = .2*(MET.physical +
                                            MET.affective +
@@ -491,7 +501,7 @@ server <- function(input, output, session) {
   output$ref_reader_personality_plot <- renderPlot({
     check_data()
     md <- metadata %>%
-      mutate(SES.economic_status_norm = (SES.economic_status - min(SES.economic_status))/diff(range(SES.economic_status)))
+      mutate(SES.economic_status_normed = (SES.economic_status - min(SES.economic_status))/diff(range(SES.economic_status)))
     data <- apply_filters(md, input) %>%
       filter(!is.na(REF.reflection), nzchar(REF.reflection))
 
@@ -511,7 +521,7 @@ server <- function(input, output, session) {
       select(p_id,
              GMS.active_engagement_with_music,
              MET.music_enjoyment,
-             SES.economic_status_norm,
+             SES.economic_status_normed,
              starts_with("TPI")) %>%
       distinct() %>%
       pivot_longer(-p_id)  %>%
