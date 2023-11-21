@@ -45,24 +45,38 @@ var_choices <- setdiff(names(metadata), c("p_id",
                                        "DEG.gender", "DEG.age"))
 var_types <- c("categorial", "numeric")[1 + map_lgl(var_choices, ~{(metadata[[.x]] %>% class())[1] == "numeric"})]
 var_data <- tibble(variable = var_choices, type = var_types)
-countries <- unique(metadata$DEG.country_of_residence)
+
+metadata <- metadata %>%
+  mutate(p_id = sprintf("%04d", p_id %>% as.factor() %>% as.integer()))
+
+countries <- unique(metadata$DEG.country_of_residence) %>% sort()
 countries <- c(countries[!is.na(countries)])
+
 age_groups <-  c( "17-34", "35-53", "54+")
 gender <- levels(metadata$gender)
-most_liked <- unique(master$REF.most_disliked) %>% sort()
-most_disliked <- unique(master$REF.most_liked) %>% sort()
+
+
+get_ref_styles <- function(data = metadata, type = "most_liked"){
+  data %>%
+    filter(!is.na(REF.reflection), nzchar(REF.reflection)) %>%
+    pull(!!sym(sprintf("REF.%s", type))) %>%
+    sort()
+}
+
+most_liked <- get_ref_styles(metadata, "most_liked")
+most_disliked <- get_ref_styles(metadata, "most_disliked")
+
 styles <- union(most_liked, most_disliked) %>% sort()
-metadata <- metadata %>% mutate(p_id = sprintf("%04d", p_id %>% as.factor() %>% as.integer()))
+
 get_reflection_p_ids <- function(data = metadata){
   data %>%
     filter(!is.na(REF.reflection), nzchar(REF.reflection)) %>%
     pull(p_id) %>%
     unique() %>%
     sort()
-
 }
 
-get_age_groups <- function(data){
+get_age_groups <- function(data = metadata){
   if(!is.null(data) || is.na(data) || nrow(data) == 0){
     return(c())
   }
@@ -207,8 +221,9 @@ ui_new <-
                   selectizeInput("ref_age_groups", "Age groups", age_groups, selected = age_groups, multiple = T),
                   selectizeInput("ref_gender", "Gender", gender, selected = gender, multiple = T),
                   selectizeInput("ref_p_id", sprintf("ID (%d)", length(p_ids)), p_ids, selected = p_ids[1], multiple = F),
-                  selectizeInput("ref_most_liked", "Most liked", most_liked, selected = most_disliked, multiple = T),
+                  selectizeInput("ref_most_liked", "Most liked", most_liked, selected = most_liked, multiple = T),
                   selectizeInput("ref_most_disliked", "Most disliked", most_disliked, selected = most_disliked, multiple = T),
+                  actionButton("ref_reset_styles", "Reset all styles"),
                   selectizeInput("ref_country",
                                  "Countries",
                                  countries,
@@ -410,6 +425,23 @@ server <- function(input, output, session) {
                           label = sprintf("ID (%d)", length(get_reflection_p_ids(data))),
                           selected = get_reflection_p_ids(data)[1])
 
+   })
+
+   shiny::observeEvent(input$ref_reset_styles, {
+     updateSelectizeInput(session, inputId = "ref_most_liked",
+                          choices = most_liked,
+                          selected = most_liked)
+     updateSelectizeInput(session, inputId = "ref_most_disliked",
+                          choices = most_disliked,
+                          selected = most_disliked)
+     updateSelectizeInput(session, inputId = "ref_gender",
+                          selected = unique(metadata$gender))
+     updateSelectizeInput(session, inputId = "ref_age_group",
+                          selected = get_age_groups(metadata))
+     updateSelectizeInput(session, inputId = "ref_p_id",
+                          choices = get_reflection_p_ids(metadata),
+                          label = sprintf("ID (%d)", length(get_reflection_p_ids(metadata))),
+                          selected = get_reflection_p_ids(metadata)[1])
    })
 
    shiny::observeEvent(input$next_id, {
@@ -626,11 +658,31 @@ server <- function(input, output, session) {
     data <- metadata %>%
       filter(!is.na(REF.reflection), nzchar(REF.reflection))
     data <- apply_filters(data, input) %>% slice(1)
+    tmp <- smp %>%
+      mutate(p_id = sprintf("%04d", as.integer(factor(p_id)))) %>%
+      mutate(familiarity = sprintf("%.0f%%", 100 * (familiarity - 1) / 4),
+             liking = sprintf("%.0f%%", 100*round((liking - 1) / 7, 3)) %>%
+                                str_replace("NA%", "--"))
+
+    smp_liked <- tmp %>% filter(style %in% c(data$REF.most_liked[1]), p_id == data$p_id[1])
+    smp_disliked <- tmp %>% filter(style %in% c(data$REF.most_disliked[1]), p_id == data$p_id[1])
+
     shiny::div(
-               shiny::h4(shiny::tags$b("Most liked:"),  data$REF.most_liked[1], style = "color:#4DAF4A"),
-               shiny::h4(shiny::tags$b("Most disliked:"), data$REF.most_disliked[1], style = "color:#E41A1C"),
+               shiny::h4(shiny::tags$b("Most liked:"),
+                         sprintf("%s (Familiarity: %s, Liking: %s)",
+                                 data$REF.most_liked[1],
+                                 smp_liked$familiarity[1],
+                                 smp_liked$liking[1]),
+                         style = "color:#4DAF4A"),
+               shiny::h4(shiny::tags$b("Most disliked:"),
+                         sprintf("%s (Familiarity: %s, Liking: %s)",
+                                 data$REF.most_disliked[1],
+                                 smp_disliked$familiarity[1],
+                                 smp_disliked$liking[1]),
+                         style = "color:#E41A1C"),
                #shiny::h4("Reflection", style = "margin-top:20px"),
-               shiny::p(data$REF.reflection[1], style = "width:600px;display:block;font-size:14pt;border:1px black dotted;padding:10px;background:#eeeeee"), style = "margin:40px")
+               shiny::p(data$REF.reflection[1],
+                        style = "width:600px;display:block;font-size:14pt;border:1px black dotted;padding:10px;background:#eeeeee"), style = "margin:40px")
 
   })
 

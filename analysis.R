@@ -138,6 +138,7 @@ parse_smp <- function(smp){
     return(NULL)
   }
   #styles <- smp$order_liking
+  #browser()
   liking <- smp[str_detect(names(smp), "style_liking")]
   likings_idz <- str_extract(names(smp)[str_detect(names(smp), "style_liking")], "[0-9]+")  %>% as.numeric()
   likings <- tibble(style = all_styles$style[likings_idz],
@@ -364,7 +365,7 @@ setup_workspace <- function(results = "data_raw",
     master <- readRDS("data/master.rds")
 
     mds_wide <- extract_wide_mds(master)
-    browser()
+    #browser()
     names(mds_wide)[str_detect(names(mds_wide), "^MDS.[0-9]+")] <- mds_labels
     mds_wide <- mds_wide %>% select(p_id, style,
                                     familiarity = SMP.familiarity,
