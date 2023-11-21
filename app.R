@@ -17,15 +17,16 @@ library(sjPlot)
 source("utils.R")
 source("analysis.R")
 source("plot_util.R")
+analysis_mode <- T
 
 on_server <- grepl("shiny-server", getwd())
-if(on_server){
+if(on_server & !analysis_mode){
     #result_dir <- "../earworms/output/results"
   result_dir <- "../dislikes/output/results/"
   #all_styles <<- readxl::read_xlsx("../dislikes/data_raw/SMP_AUS_styles.xlsx")
-  all_styles_path <- "../dislikes/data_raw/SMP_AUS_styles.xlsx"
+  all_styles_path <- "data/SMP_AUS_styles.xlsx"
 } else{
-    result_dir <- "data/from_server/"
+    result_dir <- "data"
     #all_styles <<- readxl::read_xlsx("data/SMP_AUS_styles.xlsx")
     all_styles_path <- "data/SMP_AUS_styles.xlsx"
 
