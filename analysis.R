@@ -1,5 +1,6 @@
-library(tidyverse)
 library(psych)
+library(tidyverse)
+
 messagef <- function(...) message(sprintf(...))
 printf <- function(...) print(sprintf(...))
 
@@ -356,13 +357,13 @@ setup_workspace <- function(results = "data_raw",
   assign("all_styles", all_styles, globalenv())
 
   if(reload || !file.exists("data/master.rds")){
-    # master <- read_data(results)
-    # master <- master %>% mutate(age = round(DEG.age/12),
-    #                             gender = factor(GIN.gender),
-    #                             DEG.financial = factor(DEG.financial_labels[as.integer(DEG.financial)], levels = DEG.financial_labels),
-    #                             DEG.life_circumstances = factor(DEG.life_circumstances_labels[as.integer(DEG.life_circumstances)], levels = DEG.life_circumstances_labels)
-    # )
-    master <- readRDS("data/master.rds")
+    master <- read_data(results)
+    master <- master %>% mutate(age = round(DEG.age/12),
+                                gender = factor(GIN.gender),
+                                DEG.financial = factor(DEG.financial_labels[as.integer(DEG.financial)], levels = DEG.financial_labels),
+                                DEG.life_circumstances = factor(DEG.life_circumstances_labels[as.integer(DEG.life_circumstances)], levels = DEG.life_circumstances_labels)
+    )
+    #master <- readRDS("data/master.rds")
 
     mds_wide <- extract_wide_mds(master)
     #browser()
